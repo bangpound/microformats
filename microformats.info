@@ -1,0 +1,4 @@
+; $Id$
+name = Microformats
+description = Microformat theme functions
+core = 6.x

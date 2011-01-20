@@ -1,0 +1,236 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Microformat theme functions.
+ */
+
+/**
+ * Implementation of hook_theme().
+ */
+function microformats_theme($existing, $type, $theme, $path) {
+  $info = array();
+  foreach (microformats_info() as $format => $properties) {
+    $info[$format] = array(
+      'arguments' => array(
+        'data' => array(),
+      ),
+      'path' => drupal_get_path('module', 'microformats'),
+      'file' => 'microformats.theme.inc',
+      'template' => $format,
+    );
+  }
+  $info['hdatetime'] = array(
+    'arguments' => array(
+      'timestamp' => array(),
+      'type' => array(),
+      'format' => array(),
+      'langcode' => array(),
+      'attributes' => array(),
+    ),
+    'file' => 'microformats.theme.inc',
+  );
+  return $info;
+}
+
+/**
+ * Supported microformats.
+ */
+function microformats_info($format = NULL) {
+  $info = array(
+    'hcard' => array(
+      'fn' => array(
+        '#required' => TRUE,
+      ),
+      'n' => array(
+        '#required' => TRUE,
+        'family-name' => array(),
+        'given-name' => array(),
+        'additional-name' => array(),
+        'honorific-prefix' => array(),
+        'honorific-suffix' => array(),
+      ),
+      'adr' => array(
+        '#format' => 'adr',
+        '#multiple' => TRUE,
+      ),
+      'agent' => array(),
+      'bday' => array(),
+      'category' => array(),
+      'class' => array(),
+      'email' => array(),
+      'geo' => array(),
+      'key' => array(),
+      'label' => array(),
+      'logo' => array(),
+      'mailer' => array(),
+      'nickname' => array(),
+      'note' => array(),
+      'org' => array(),
+      'photo' => array(),
+      'rev' => array(),
+      'role' => array(),
+      'sort-string' => array(),
+      'sound' => array(),
+      'tel' => array(),
+      'title' => array(),
+      'tz' => array(),
+      'uid' => array(),
+      'url' => array(),
+    ),
+    'figure' => array(
+    ),
+    'adr' => array(
+      'post-office-box' => array(),
+      'extended-address' => array(),
+      'street-address' => array(),
+      'locality' => array(),
+      'region' => array(),
+      'postal-code' => array(),
+      'country-name' => array(),
+      'type' => array(),
+      'value' => array(),
+    ),
+    'hentry' => array(
+      'entry_title' => array(),
+      'entry_content' => array(),
+      'entry_summary' => array(),
+      'updated' => array(),
+      'published' => array(),
+      'bookmark' => array(),
+      'author' => array(),
+    ),
+  );
+  return $format ? $info[$format] : $info;
+}
+
+/**
+ * Helper for hcard implied n
+ */
+function microformats_imply_n(&$hcard) {
+  // Implied 'n' optimization.
+  // required property n can sometimes be calculated from fn property.
+  // see http://microformats.org/wiki/hcard#Implied_.22n.22_Optimization
+  if (empty($hcard['n']) && ($hcard['fn'] != $hcard['org']) && strpos($hcard['fn'], ' ')) {
+    $n = preg_split("/\s+/", trim($hcard['fn']));
+
+    if (count($n) == 2) {
+      // use array_reverse here?
+      if ((strlen($n[0]) > 1) && (strpos($n[0], ',') == strlen($n[0]) - 1)) {
+        $key = (strlen($n[1] = preg_replace('/\.$/', '', $n[1])) == 1) ? 'given-name-first-initial' : 'given-name';
+        $hcard['n'] = array(
+          $key => $n[1],
+          'family-name' => preg_replace('/\,$/', '', $n[0]),
+        );
+      }
+      else {
+        $key = (strlen($n[0] = preg_replace('/\.$/', '', $n[0])) == 1) ? 'given-name-first-initial' : 'given-name';
+        $hcard['n'] = array(
+          $key => $n[0],
+          'family-name' => $n[1],
+        );
+      }
+    }
+  }
+  else if (empty($hcard['n'])) {
+    $hcard['n'] = array(
+      'given-name' => '',
+      'family-name' => '',
+    );
+  }
+}
+
+/**
+ * Load and parse XMDP.
+ */
+function microformat_profile($url) {
+  $profile = array();
+  $qp = hqp($url, 'dl.profile');
+  return build_dictionary($qp);
+}
+
+/**
+ * Translate a definition list into a PHP array.
+ */
+function build_dictionary($qp) {
+  $dictionary = array();
+  foreach ($qp->children() as $child) {
+    if ($child->tag() == 'dt') {
+      $id = $child->text();
+      $value = array();
+    }
+    else if ($child->tag() == 'dd') {
+      $nested_dls = $child->branch()->children('dl')->remove();
+      $value['#definition'] = $child->innerHTML();
+      foreach ($nested_dls as $nested_dl) {
+        $value += build_dictionary($nested_dl);
+      }
+    }
+    $dictionary[$id] = $value;
+  }
+  return $dictionary;
+}
+
+/**
+ * Microformat function.
+ */
+function microformat() {
+  $args = func_get_args();
+  $hooks = array_shift($args);
+  if (!is_array($hooks)) {
+    $hooks = array($hooks);
+  }
+  $output = call_user_func_array('theme', array_merge(array($hooks), $args));
+  if ($output) {
+    $qp = hqp($output);
+    foreach ($hooks as $hook) {
+      drupal_alter('microformat_'. $hook, $qp, $args);
+    }
+    $output = '';
+    foreach ($qp->top('body')->children() as $node) {
+      $output .= $node->html();
+    }
+  }
+  return $output;
+}
+
+/**
+ * A special-purpose version of {@link qp()} for Microformats.
+ *
+ * hqp means Microformat (μF) QueryPath.
+ *
+ * Output of Drupal themes (if valid XHTML) can be processed as XML snippets if
+ * libxml is told to handle the document as HTML but the document is preceded
+ * with an XML declaration, the document has a single root element and HTML
+ * entities are replaced with UTF-8 encoded entities.
+ *
+ * The following options are automatically set unless overridden:
+ *  - ignore_parser_warnings: TRUE
+ *  - omit_xml_declaration: TRUE (on output, remove XML declaration)
+ *  - use_parser: html
+ *  - replace_entities: TRUE
+ *
+ * Parser warning messages are also suppressed, so if the parser emits a
+ * warning, the application will not be notified. This is equivalent to
+ * calling <code>@qp()</code>.
+ *
+ * Warning: Character set conversions will only work if the Multi-Byte (mb)
+ * library is installed and enabled. This is usually enabled, but not always.
+ *
+ * @see qp()
+ */
+function hqp($document = NULL, $selector = NULL, $options = array()) {
+  include_once libraries_get_path('QueryPath') .'/QueryPath.php';
+
+  // Need a way to force an HTML parse instead of an XML parse when the
+  // doctype is XHTML, since many XHTML documents are not valid XML
+  // (because of coding errors, not by design).
+
+  $options += array(
+    'omit_xml_declaration' => TRUE,
+    'ignore_parser_warnings' => TRUE,
+    'use_parser' => 'html',
+  );
+  return @qp($document, $selector, $options);
+}

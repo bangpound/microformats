@@ -1,0 +1,86 @@
+<?php
+// $Id$
+/**
+ * @file
+ * Microformat tests.
+ */
+
+class MicroformatsTestCase extends DrupalWebTestCase {
+  /**
+   * Implementation of getInfo().
+   */
+  public static function getInfo() {
+    return array(
+      'name' => t('Microformats'),
+      'description' => t('Microformats'),
+      'group' => t('Microformats'),
+    );
+  }
+
+  /**
+   * Implementation of setUp().
+   */
+  function setUp() {
+    parent::setUp('microformats');
+  }
+
+  /**
+   * Test implied N optimization.
+   */
+  function testImpliedNOptimization() {
+    $hcard = array(
+      'fn' => 'Rosa Luxemburg',
+    );
+    microformats_imply_n($hcard);
+    $this->assertEqual('Rosa', $hcard['n']['given-name']);
+    $this->assertEqual('Luxemburg', $hcard['n']['family-name']);
+
+    $hcard = array(
+      'fn' => 'Luxemburg, Rosa',
+    );
+    microformats_imply_n($hcard);
+    $this->assertEqual('Rosa', $hcard['n']['given-name']);
+    $this->assertEqual('Luxemburg', $hcard['n']['family-name']);
+
+    $hcard = array(
+      'fn' => 'R. Luxemburg',
+    );
+    microformats_imply_n($hcard);
+    $this->assertEqual('R', $hcard['n']['given-name-first-initial']);
+    $this->assertEqual('Luxemburg', $hcard['n']['family-name']);
+
+    $hcard = array(
+      'fn' => 'Luxemburg, R.',
+    );
+    microformats_imply_n($hcard);
+    $this->assertEqual('R', $hcard['n']['given-name-first-initial']);
+    $this->assertEqual('Luxemburg', $hcard['n']['family-name']);
+  }
+
+  /**
+   * Test hcard
+   */
+  function testHcard() {
+    $hcard = array(
+      'n' => array(
+        'given-name' => 'Rosa',
+        'family-name' => 'Luxemburg',
+      ),
+      'adr' => array(
+        'street-address' => '1914 die Internationale Strasse',
+        'locality' => 'Berlin',
+        'postal-code' => '12345',
+        'country-name' => 'Germany',
+      ),
+    );
+    $this->assertNotNull(theme('microformat', 'hcard', $hcard), 'hCard is not null');
+
+    $hcard = array(
+      'n' => array(
+        'given-name' => 'Rosa',
+        'family-name' => 'Luxemburg',
+      ),
+    );
+    $this->assertNotNull(theme('microformat', 'hcard', $hcard), 'hCard is not null');
+  }
+}
